@@ -18,12 +18,12 @@ const _GenericAffOrQuadExpr{C, V} = Union{GenericAffExpr{C, V}, GenericQuadExpr{
 # The compiler could avoid these allocations at runtime with constant propagation as the types
 # `x` and `y` are known at compile time but apparently it does not.
 function _MA.promote_operation(::Union{typeof(+), typeof(-), typeof(*)},
-                               ::Type{<:_Constant}, V::Type{<:AbstractVariableRef})
-    return GenericAffExpr{Float64, V}
+                               C::Type{<:_Constant}, V::Type{<:AbstractVariableRef})
+    return GenericAffExpr{_float_type(C), V}
 end
 function _MA.promote_operation(::Union{typeof(+), typeof(-), typeof(*)},
-                               V::Type{<:AbstractVariableRef}, ::Type{<:_Constant})
-    return GenericAffExpr{Float64, V}
+                               V::Type{<:AbstractVariableRef}, C::Type{<:_Constant})
+    return GenericAffExpr{_float_type(C), V}
 end
 function _MA.promote_operation(::Union{typeof(+), typeof(-), typeof(*)},
                                ::Type{<:_Constant}, S::Type{<:_GenericAffOrQuadExpr})
@@ -36,7 +36,7 @@ end
 
 function _MA.promote_operation(::Union{typeof(+), typeof(-)}, ::Type{V},
                                ::Type{V}) where {V <: AbstractVariableRef}
-    return GenericAffExpr{Float64, V}
+    return _aff_type(V)
 end
 function _MA.promote_operation(
     ::Union{typeof(+), typeof(-)}, ::Type{V},
@@ -66,7 +66,7 @@ function _MA.promote_operation(::Union{typeof(+), typeof(-)},
 end
 
 function _MA.promote_operation(::typeof(*), ::Type{V}, ::Type{V}) where {V <: AbstractVariableRef}
-    return GenericQuadExpr{Float64, V}
+    return _quad_type(V)
 end
 function _MA.promote_operation(::typeof(*), ::Type{V}, ::Type{GenericAffExpr{T, V}}) where {T, V <: AbstractVariableRef}
     return GenericQuadExpr{T, V}

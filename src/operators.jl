@@ -9,8 +9,21 @@
 #############################################################################
 
 const _JuMPTypes = Union{AbstractJuMPScalar, NonlinearExpression}
-_float(x::Number) = convert(Float64, x)
+_float_type(::Type{<:Real}) = Float64
+_float_type(::Type{<:Complex}) = Complex{Float64}
+_float(x::Real) = convert(Float64, x)
+_float(x::Complex) = convert(Complex{Float64}, x)
 _float(J::UniformScaling) = _float(J.λ)
+_number_type(::Union{AbstractVariableRef, Type{<:AbstractVariableRef}}) = Float64
+function _aff_type(::Type{V}) where {V<:AbstractVariableRef}
+    return GenericAffExpr{_number_type(V), typeof(V)}
+end
+function _quad_type(::Type{V}) where {V<:AbstractVariableRef}
+    return GenericQuadExpr{_number_type(V), typeof(V)}
+end
+_aff_type(v::AbstractVariableRef) = _aff_type(typeof(v))
+_quad_type(v::AbstractVariableRef) = _quad_type(typeof(v))
+_quad_type(v::GenericAffExpr{C, V}) where {C, V} = GenericQuadExpr{C, V}
 
 # Overloads
 #
@@ -27,9 +40,10 @@ Base.:+(lhs::_Constant, rhs::AbstractVariableRef) = _build_aff_expr(_float(lhs),
 Base.:-(lhs::_Constant, rhs::AbstractVariableRef) = _build_aff_expr(_float(lhs), -1.0, rhs)
 function Base.:*(lhs::_Constant, rhs::AbstractVariableRef)
     if iszero(lhs)
-        return zero(GenericAffExpr{Float64, typeof(rhs)})
+        return zero(_aff_type(rhs))
     else
-        return _build_aff_expr(0.0, _float(lhs), rhs)
+        coef = _float(lhs)
+        return _build_aff_expr(zero(coef), coef, rhs)
     end
 end
 # _Constant--_GenericAffOrQuadExpr
@@ -66,13 +80,13 @@ Base.:/(lhs::AbstractVariableRef, rhs::_Constant) = (*)(1.0/rhs,lhs)
 Base.:+(lhs::V, rhs::V) where {V <: AbstractVariableRef} = _build_aff_expr(0.0, 1.0, lhs, 1.0, rhs)
 function Base.:-(lhs::V, rhs::V) where {V <: AbstractVariableRef}
     if lhs == rhs
-        return zero(GenericAffExpr{Float64, V})
+        return zero(_aff_type(V))
     else
         return _build_aff_expr(0.0, 1.0, lhs, -1.0, rhs)
     end
 end
 function Base.:*(lhs::V, rhs::V) where {V <: AbstractVariableRef}
-    GenericQuadExpr(GenericAffExpr{Float64, V}(), UnorderedPair(lhs, rhs) => 1.0)
+    GenericQuadExpr(zero(_aff_type(V)), UnorderedPair(lhs, rhs) => 1.0)
 end
 # AbstractVariableRef--GenericAffExpr
 function Base.:+(lhs::V, rhs::GenericAffExpr{C, V}) where {C, V <: AbstractVariableRef}
@@ -133,9 +147,9 @@ function Base.:^(lhs::Union{AbstractVariableRef, GenericAffExpr}, rhs::Integer)
     if rhs == 2
         return lhs*lhs
     elseif rhs == 1
-        return convert(GenericQuadExpr{Float64, variable_ref_type(lhs)}, lhs)
+        return convert(_quad_type(lhs), lhs)
     elseif rhs == 0
-        return one(GenericQuadExpr{Float64, variable_ref_type(lhs)})
+        return one(_quad_type(lhs))
     else
         error("Only exponents of 0, 1, or 2 are currently supported. Are you trying to build a nonlinear problem? Make sure you use @NLconstraint/@NLobjective.")
     end
@@ -163,6 +177,7 @@ function Base.:*(lhs::GenericAffExpr{C, V}, rhs::V) where {C, V <: AbstractVaria
 end
 Base.:/(lhs::GenericAffExpr, rhs::AbstractVariableRef) = error("Cannot divide affine expression by a variable")
 # AffExpr--AffExpr
+Base.:+(lhs::GenericAffExpr{S, V}, rhs::GenericAffExpr{T, V}) where {S, T, V} = +(promote(lhs, rhs)...)
 function Base.:+(lhs::GenericAffExpr{C, V}, rhs::GenericAffExpr{C, V}) where {C, V<:_JuMPTypes}
     if length(linear_terms(lhs)) > 50 || length(linear_terms(rhs)) > 50
         if length(linear_terms(lhs)) > 1
@@ -250,12 +265,13 @@ LinearAlgebra.dot(lhs::_JuMPTypes, rhs::_JuMPTypes) = lhs*rhs
 LinearAlgebra.dot(lhs::_JuMPTypes, rhs::_Constant) = lhs*rhs
 LinearAlgebra.dot(lhs::_Constant, rhs::_JuMPTypes) = lhs*rhs
 
-Base.promote_rule(V::Type{<:AbstractVariableRef}, R::Type{<:Real}) = GenericAffExpr{Float64, V}
+Base.promote_rule(V::Type{<:AbstractVariableRef}, R::Type{<:Number}) = GenericAffExpr{_float_type(R), V}
 Base.promote_rule(V::Type{<:AbstractVariableRef}, ::Type{<:GenericAffExpr{T}}) where {T} = GenericAffExpr{T, V}
 Base.promote_rule(V::Type{<:AbstractVariableRef}, ::Type{<:GenericQuadExpr{T}}) where {T} = GenericQuadExpr{T, V}
-Base.promote_rule(::Type{GenericAffExpr{S, V}}, R::Type{<:Real}) where {S, V} = GenericAffExpr{promote_type(S, R), V}
+Base.promote_rule(::Type{GenericAffExpr{S, V}}, R::Type{<:Number}) where {S, V} = GenericAffExpr{promote_type(S, R), V}
+Base.promote_rule(::Type{GenericAffExpr{S, V}}, ::Type{GenericAffExpr{T, V}}) where {S, T, V} = GenericAffExpr{promote_type(S, T), V}
 Base.promote_rule(::Type{<:GenericAffExpr{S, V}}, ::Type{<:GenericQuadExpr{T, V}}) where {S, T, V} = GenericQuadExpr{promote_type(S, T), V}
-Base.promote_rule(::Type{GenericQuadExpr{S, V}}, R::Type{<:Real}) where {S, V} = GenericQuadExpr{promote_type(S, R), V}
+Base.promote_rule(::Type{GenericQuadExpr{S, V}}, R::Type{<:Number}) where {S, V} = GenericQuadExpr{promote_type(S, R), V}
 
 Base.transpose(x::AbstractJuMPScalar) = x
 

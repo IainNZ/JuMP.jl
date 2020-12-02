@@ -30,9 +30,13 @@ abstract type IJuliaMode <: PrintMode end
 # Whether something is zero or not for the purposes of printing it
 # oneunit is useful e.g. if coef is a Unitful quantity.
 _is_zero_for_printing(coef) = abs(coef) < 1e-10 * oneunit(coef)
+function _is_zero_for_printing(coef::Complex)
+    return _is_zero_for_printing(real(coef)) && _is_zero_for_printing(imag(coef))
+end
 # Whether something is one or not for the purposes of printing it.
 _is_one_for_printing(coef) = _is_zero_for_printing(abs(coef) - oneunit(coef))
 _sign_string(coef) = coef < zero(coef) ? " - " : " + "
+_sign_string(coef::Complex) = " + "
 
 # Helper function that rounds carefully for the purposes of printing
 # e.g.   5.3  =>  5.3

@@ -311,12 +311,18 @@ end
 function Base.convert(::Type{GenericAffExpr{T,V}}, v::_Constant) where {T,V}
     return GenericAffExpr{T,V}(convert(T, _constant_to_number(v)))
 end
+function Base.convert(::Type{GenericAffExpr{T,V}}, aff::GenericAffExpr{T,V}) where {T,V}
+    return aff
+end
+function Base.convert(::Type{GenericAffExpr{T,V}}, aff::GenericAffExpr{S,V}) where {S,T,V}
+    return GenericAffExpr{T,V}(aff.constant, convert(OrderedDict{V,T}, aff.terms))
+end
 
 # Alias for (Float64, VariableRef), the specific GenericAffExpr used by JuMP
 const AffExpr = GenericAffExpr{Float64,VariableRef}
 
 # Check all coefficients are finite, i.e. not NaN, not Inf, not -Inf
-function _assert_isfinite(a::AffExpr)
+function _assert_isfinite(a::GenericAffExpr)
     for (coef, var) in linear_terms(a)
         isfinite(coef) || error("Invalid coefficient $coef on variable $var.")
     end
@@ -351,11 +357,10 @@ end
 # Note: No validation is performed that the variables in the AffExpr belong to
 # the same model. The verification is done in `check_belongs_to_model` which
 # should be called before calling `MOI.ScalarAffineFunction`.
-function MOI.ScalarAffineFunction(a::AffExpr)
+function MOI.ScalarAffineFunction(a::GenericAffExpr{C, VariableRef}) where C
     _assert_isfinite(a)
-    terms = MOI.ScalarAffineTerm{Float64}[MOI.ScalarAffineTerm(t[1],
-                                                               index(t[2]))
-                                          for t in linear_terms(a)]
+    terms = MOI.ScalarAffineTerm{C}[MOI.ScalarAffineTerm(t[1], index(t[2]))
+                                    for t in linear_terms(a)]
     return MOI.ScalarAffineFunction(terms, a.constant)
 end
 moi_function(a::GenericAffExpr) = MOI.ScalarAffineFunction(a)
@@ -364,8 +369,8 @@ function moi_function_type(::Type{<:GenericAffExpr{T}}) where T
 end
 
 
-function AffExpr(m::Model, f::MOI.ScalarAffineFunction)
-    aff = AffExpr()
+function GenericAffExpr{C,VariableRef}(m::Model, f::MOI.ScalarAffineFunction) where C
+    aff = GenericAffExpr{C,VariableRef}()
     for t in f.terms
         add_to_expression!(aff, t.coefficient, VariableRef(m, t.variable_index))
     end
@@ -406,10 +411,10 @@ function _fill_vaf!(terms::Vector{<:MOI.VectorAffineTerm}, offset::Int, oi::Int,
     return offset + length(linear_terms(aff))
 end
 
-function MOI.VectorAffineFunction(affs::Vector{AffExpr})
+function MOI.VectorAffineFunction(affs::Vector{GenericAffExpr{C, VariableRef}}) where C
     len = sum(aff -> length(linear_terms(aff)), affs)
-    terms = Vector{MOI.VectorAffineTerm{Float64}}(undef, len)
-    constant = Vector{Float64}(undef, length(affs))
+    terms = Vector{MOI.VectorAffineTerm{C}}(undef, len)
+    constant = Vector{C}(undef, length(affs))
     offset = 0
     for (i, aff) in enumerate(affs)
         constant[i] = aff.constant
