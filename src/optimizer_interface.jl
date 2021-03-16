@@ -107,7 +107,14 @@ function set_optimizer(model::Model, optimizer_constructor;
     else
         optimizer = MOI.instantiate(optimizer_constructor)
     end
-    MOIU.reset_optimizer(model, optimizer)
+    model.moi_backend = MOIU.CachingOptimizer(
+        optimizer,
+        model.moi_backend.model_cache,
+        MOIU.EMPTY_OPTIMIZER,
+        MOIU.AUTOMATIC,
+        MOIU.IndexMap(),
+        MOIU.IndexMap(),
+    )
 end
 
 # Deprecation for JuMP v0.18 -> JuMP v0.19 transition
