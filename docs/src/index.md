@@ -50,7 +50,7 @@ programming.
 ## How the documentation is structured
 
 Having a high-level overview of how this documentation is structured will help
-you know where to look for certain things. There are four main parts:
+you know where to look for certain things.
 
 * **Tutorials** contain worked examples of solving problems with JuMP. Start
   here if you are new to JuMP, or you have a particular problem class you want
@@ -67,6 +67,14 @@ you know where to look for certain things. There are four main parts:
 * The **Background information** section contains background reading material to
   provide context to JuMP. Look here if you want an understanding of what JuMP
   is and why we created it, rather than how to use it.
+
+* The **Developer docs** section contains information for people contributing to
+  JuMP development or writing JuMP extensions. Don't worry about this section if
+  you are just using JuMP to formulate and solve problems as a user.
+
+* The **MathOptInterface** section is a self-contained copy of the documentation
+  for MathOptInterface. Look here for functions and constants beginning with
+  `MOI.`, as well as for general information on how MathOptInterface works.
 
 ### Citing JuMP
 
