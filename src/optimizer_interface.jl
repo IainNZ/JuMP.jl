@@ -73,51 +73,61 @@ function MOIU.attach_optimizer(model::Model)
 end
 
 """
-    set_optimizer(model::Model, optimizer_factory;
-                  bridge_constraints::Bool=true)
-
+    set_optimizer(
+        model::Model,
+        optimizer_factory;
+        bridge_formulation::Bool = length(model.bridge_types) > 0,
+    )
 
 Creates an empty `MathOptInterface.AbstractOptimizer` instance by calling
-`optimizer_factory()` and sets it as the optimizer of `model`. Specifically,
-`optimizer_factory` must be callable with zero arguments and return an empty
-`MathOptInterface.AbstractOptimizer`.
+`MOI.instantiate(optimizer_factory)` and sets it as the optimizer of `model`.
 
-If `bridge_constraints` is true, constraints that are not supported by the
-optimizer are automatically bridged to equivalent supported constraints when
-an appropriate transformation is defined in the `MathOptInterface.Bridges`
-module or is defined in another module and is explicitly added.
+If `bridge_formulation`, adds a `MOI.Bridges.LazyBridgeOptimizer` layer around
+the constructed optimizer.
 
-See [`set_optimizer_attributes`](@ref) and [`set_optimizer_attribute`](@ref) for setting
-solver-specific parameters of the optimizer.
+See [`set_optimizer_attributes`](@ref) and [`set_optimizer_attribute`](@ref) for
+setting solver-specific parameters of the optimizer.
 
 ## Examples
+
 ```julia
 model = Model()
+
 set_optimizer(model, GLPK.Optimizer)
+
+set_optimizer(model, () -> Gurobi.Optimizer(); bridge_formulation = true)
+
+factory = optimizer_with_attributes(Gurobi.Optimizer, "OutputFlag" => 0)
+set_optimizer(model, factory)
 ```
 """
 function set_optimizer(
     model::Model,
     optimizer_constructor;
-    bridge_constraints::Bool = true,
+    # By default, add bridges only if the user has manually added bridges.
+    bridge_formulation::Bool = length(model.bridge_types) > 0,
+    bridge_constraints::Union{Nothing,Bool} = nothing,
 )
-    error_if_direct_mode(model, :set_optimizer)
-    if bridge_constraints
-        # We set `with_names=false` because the names are handled by the first
-        # caching optimizer. If `default_copy_to` without names is supported,
-        # no need for a second cache.
-        optimizer = MOI.instantiate(
-            optimizer_constructor,
-            with_bridge_type = Float64,
-            with_names = false,
+    if bridge_constraints !== nothing
+        @warn(
+            "`bridge_constraints` is deprecated. Use `bridge_formulation` " *
+            "instead.",
         )
-        for bridge_type in model.bridge_types
-            _moi_add_bridge(optimizer, bridge_type)
-        end
-    else
-        optimizer = MOI.instantiate(optimizer_constructor)
+        bridge_formulation = bridge_constraints
     end
-    return MOIU.reset_optimizer(model, optimizer)
+    error_if_direct_mode(model, :set_optimizer)
+
+    optimizer = MOI.instantiate(optimizer_constructor)
+    if bridge_formulation
+        optimizer =
+            MOI.instantiate(optimizer_constructor; with_bridge_type = Float64)
+        # Make sure to add the bridges in `model.bridge_types`! These may have
+        # been added when no optimizer was present.
+        _moi_add_bridge.(Ref(optimizer), model.bridge_types)
+    end
+    model.moi_backend = _CachingOptimizer(backend(model).model_cache, optimizer)
+    MOIU.reset_optimizer(model)
+    return
 end
 
 # Deprecation for JuMP v0.18 -> JuMP v0.19 transition
@@ -192,6 +202,16 @@ function optimize!(
                 "The solver does not support nonlinear problems " *
                 "(i.e., NLobjective and NLconstraint).",
             )
+        elseif err isa MOI.UnsupportedConstraint
+            if _add_bridges_if_needed(model)
+                optimize!(
+                    model;
+                    ignore_optimize_hook = ignore_optimize_hook,
+                    kwargs...,
+                )
+            else
+                rethrow(err)
+            end
         else
             rethrow(err)
         end

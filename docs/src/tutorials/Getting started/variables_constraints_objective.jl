@@ -221,7 +221,7 @@ model = Model(GLPK.Optimizer)
 @variable(model, y >= 0)
 set_objective_sense(model, MOI.MIN_SENSE)
 set_objective_function(model, x + y)
-
+set_silent(model)
 optimize!(model)
 
 #-
@@ -268,7 +268,7 @@ c = [1; 3; 5; 2]
 @variable(vector_model, x[1:4] >= 0)
 @constraint(vector_model, A * x .== b)
 @objective(vector_model, Min, c' * x)
-
+set_silent(vector_model)
 optimize!(vector_model)
 
 #-

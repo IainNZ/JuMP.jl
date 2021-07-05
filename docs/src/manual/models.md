@@ -226,22 +226,18 @@ CachingOptimizer state: EMPTY_OPTIMIZER
 Solver name: GLPK
 
 julia> b = backend(model)
-MOIU.CachingOptimizer{MOI.AbstractOptimizer,MOIU.UniversalFallback{MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}}}
+MOIU.CachingOptimizer{GLPK.Optimizer,MOIU.UniversalFallback{MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}}}
 in state EMPTY_OPTIMIZER
 in mode AUTOMATIC
 with model cache MOIU.UniversalFallback{MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}}
   fallback for MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}
-with optimizer MOIB.LazyBridgeOptimizer{GLPK.Optimizer}
-  with 0 variable bridges
-  with 0 constraint bridges
-  with 0 objective bridges
-  with inner model A GLPK model
+with optimizer A GLPK model
 ```
 
 The backend is a `MOIU.CachingOptimizer` in the state `EMPTY_OPTIMIZER` and mode
 `AUTOMATIC`.
 
-Alternatively, use [`unsafe_backend`](@ref) to access the innermost 
+Alternatively, use [`unsafe_backend`](@ref) to access the innermost
 `GLPK.Optimizer` object:
 ```jldoctest models_backends
 julia> unsafe_backend(model)
@@ -272,16 +268,8 @@ It has two parts:
  2. An optimizer, which is used to solve the problem
     ```jldoctest models_backends
     julia> b.optimizer
-    MOIB.LazyBridgeOptimizer{GLPK.Optimizer}
-    with 0 variable bridges
-    with 0 constraint bridges
-    with 0 objective bridges
-    with inner model A GLPK model
+    A GLPK model
     ```
-
-!!! info
-    The [LazyBridgeOptimizer](@ref) section explains what a
-    `LazyBridgeOptimizer` is.
 
 The `CachingOptimizer` has logic to decide when to copy the problem from the
 cache to the optimizer, and when it can efficiently update the optimizer
@@ -309,25 +297,10 @@ A `CachingOptimizer` has two modes of operation:
   an operation in the incorrect state results in an error.
 
 By default [`Model`](@ref) will create a `CachingOptimizer` in `AUTOMATIC` mode.
-Use the `caching_mode` keyword to create a model in `MANUAL` mode:
-```jldoctest
-julia> Model(GLPK.Optimizer; caching_mode = MOI.Utilities.MANUAL)
-A JuMP Model
-Feasibility problem with:
-Variables: 0
-Model mode: MANUAL
-CachingOptimizer state: EMPTY_OPTIMIZER
-Solver name: GLPK
-```
-
-!!! tip
-    Only use `MANUAL` mode if you have a very good reason. If you want to reduce
-    the overhead between JuMP and the underlying solver, consider
-    [Direct mode](@ref) instead.
 
 ### LazyBridgeOptimizer
 
-The second layer that JuMP applies automatically is a `LazyBridgeOptimizer`. A
+The second layer that JuMP may apply is a `LazyBridgeOptimizer`. A
 `LazyBridgeOptimizer` is an MOI layer that attempts to transform constraints
 added by the user into constraints supported by the solver. This may involve
 adding new variables and constraints to the optimizer. The transformations are
@@ -337,9 +310,10 @@ A common example of a bridge is one that splits an interval constrait like
 `@constraint(model, 1 <= x + y <= 2)` into two constraints,
 `@constraint(model, x + y >= 1)` and `@constraint(model, x + y <= 2)`.
 
-Use the `bridge_constraints=false` keyword to remove the bridging layer:
+The `LazyBridgeOptimizer` is added only if necessary. However, you can use the
+`bridge_formulation = true` keyword to add the bridging layer by default:
 ```jldoctest
-julia> model = Model(GLPK.Optimizer; bridge_constraints = false)
+julia> model = Model(GLPK.Optimizer; bridge_formulation = true)
 A JuMP Model
 Feasibility problem with:
 Variables: 0
@@ -348,18 +322,17 @@ CachingOptimizer state: EMPTY_OPTIMIZER
 Solver name: GLPK
 
 julia> backend(model)
-MOIU.CachingOptimizer{MOI.AbstractOptimizer,MOIU.UniversalFallback{MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}}}
+MOIU.CachingOptimizer{MOIB.LazyBridgeOptimizer{GLPK.Optimizer},MOIU.UniversalFallback{MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}}}
 in state EMPTY_OPTIMIZER
 in mode AUTOMATIC
 with model cache MOIU.UniversalFallback{MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}}
   fallback for MOIU.GenericModel{Float64,MOIU.ModelFunctionConstraints{Float64}}
-with optimizer A GLPK model
+with optimizer MOIB.LazyBridgeOptimizer{GLPK.Optimizer}
+  with 0 variable bridges
+  with 0 constraint bridges
+  with 0 objective bridges
+  with inner model A GLPK model
 ```
-
-!!! tip
-    Only disable bridges if you have a very good reason. If you want to reduce
-    the overhead between JuMP and the underlying solver, consider
-    [Direct mode](@ref) instead.
 
 ## Direct mode
 

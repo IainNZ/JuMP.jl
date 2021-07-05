@@ -513,33 +513,37 @@ function check_belongs_to_model(con::VectorConstraint, model)
 end
 
 function moi_add_constraint(
-    model::MOI.ModelLike,
-    f::MOI.AbstractFunction,
-    s::MOI.AbstractSet,
-)
-    if !MOI.supports_constraint(model, typeof(f), typeof(s))
-        if moi_mode(model) == DIRECT
-            bridge_message = "."
-        elseif moi_bridge_constraints(model)
-            error(
-                sprint(
-                    io -> MOI.Bridges.debug(
-                        model.optimizer,
-                        typeof(f),
-                        typeof(s);
-                        io = io,
-                    ),
-                ),
-            )
-        else
-            bridge_message = ", try using `bridge_constraints=true` in the `JuMP.Model` constructor if you believe the constraint can be reformulated to constraints supported by the solver."
-        end
+    model::JuMP.Model,
+    f::F,
+    s::S,
+) where {F<:MOI.AbstractFunction,S<:MOI.AbstractSet}
+    return moi_add_constraint(model, backend(model), f, s)
+end
+
+function moi_add_constraint(
+    model::JuMP.Model,
+    moi_backend::MOI.ModelLike,
+    f::F,
+    s::S,
+) where {F<:MOI.AbstractFunction,S<:MOI.AbstractSet}
+    if MOI.supports_constraint(moi_backend, F, S)
+        # Our backend supports the constraint. Go ahead and add it.
+        return MOI.add_constraint(moi_backend, f, s)
+    elseif _add_bridges_if_needed(model)
+        # In here, we added some bridges. Call again with the new backend.
+        return moi_add_constraint(model, f, s)
+    end
+    # Our backend doesn't support the constraint, and even after we added
+    # bridges it still didn't!
+    if moi_mode(moi_backend) == DIRECT
+        error("Constraints of type $F-in-$S are not supported by the solver.")
+    else
         error(
-            "Constraints of type $(typeof(f))-in-$(typeof(s)) are not supported by the solver" *
-            bridge_message,
+            sprint() do io
+                return MOI.Bridges.debug(moi_backend.optimizer, F, S; io = io)
+            end,
         )
     end
-    return MOI.add_constraint(model, f, s)
 end
 
 """
@@ -557,7 +561,7 @@ function add_constraint(
     check_belongs_to_model(con, model)
     func, set = moi_function(con), moi_set(con)
     cindex = moi_add_constraint(
-        backend(model),
+        model,
         func,
         set,
     )::MOI.ConstraintIndex{typeof(func),typeof(set)}

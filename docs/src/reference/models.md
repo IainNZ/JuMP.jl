@@ -67,7 +67,6 @@ Base.read(::IO, ::Type{Model}; ::MOI.FileFormats.FileFormat)
 ## Bridge tools
 
 ```@docs
-bridge_constraints
 print_bridge_graph
 ```
 
